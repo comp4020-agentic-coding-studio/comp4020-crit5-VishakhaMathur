@@ -1,4 +1,7 @@
-// The TypeScript entry point, loaded as a module by index.html. Vite compiles
-// it; `pnpm typecheck` type-checks it. If the week's spec rules out
-// JavaScript, delete this file and the script tag that loads it.
-export {};
+// Bootstrap only — the game's rules live in game-logic.ts, the canvas
+// drawing and input handling in renderer.ts.
+import { start } from "./renderer";
+
+const canvas = document.querySelector<HTMLCanvasElement>("#game");
+if (!canvas) throw new Error("#game canvas not found");
+start(canvas);
