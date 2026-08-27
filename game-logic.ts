@@ -1,7 +1,16 @@
-// Pure game state for Balloon Shield: no DOM, no canvas, no timers. Entities
-// travel outward-in along a fixed angle from progress 0 (spawned at the edge)
-// to progress 1 (reaches the Glass Star at the center). Kept dependency-free
-// so the rules can be unit-tested directly, without a canvas or jsdom.
+// ============================================================================
+// PURE MATH LOGIC — Balloon Shield
+// ----------------------------------------------------------------------------
+// This entire file is pure: no DOM, no canvas, no timers, no
+// requestAnimationFrame. Every exported function is plain data in, plain
+// data out (numbers/booleans/plain objects) — this is the section to write
+// automated tests against directly, no jsdom or canvas required. Canvas
+// drawing, input wiring and the animation loop live in renderer.ts, are
+// deliberately untested "how" rather than "what", and import from here.
+//
+// Entities travel outward-in along a fixed angle, from progress 0 (spawned
+// at the edge) to progress 1 (reaches the Glass Star at the center).
+// ============================================================================
 
 export type EntityKind = "spike" | "balloon";
 
@@ -160,10 +169,10 @@ export function difficultyFor(elapsedSeconds: number): Difficulty {
   };
 }
 
-// --- Collision math -------------------------------------------------------
-// Pure and isolated from rendering/DOM on purpose: this is the "did the
-// player's tap land on an entity" check, and it needs to be testable with
-// plain numbers in, a boolean/entity out — no canvas required.
+// --- Collision math (still PURE MATH LOGIC — see file header) -------------
+// The "did the player's tap land on an entity" check: plain numbers in, a
+// boolean/entity out. checkCollision below is the core primitive: a
+// standalone circle-vs-circle overlap test, no entities/DOM/canvas involved.
 
 export const SPIKE_RADIUS = 14;
 export const BALLOON_RADIUS = 16;
@@ -264,3 +273,7 @@ export function findEntityAt(
   }
   return undefined;
 }
+
+// ============================================================================
+// END PURE MATH LOGIC
+// ============================================================================
