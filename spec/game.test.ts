@@ -8,6 +8,7 @@ import {
   MAX_HITS,
   SPIKE_RADIUS,
   WIN_SECONDS,
+  checkCollision,
   createInitialState,
   createIntroState,
   entityPosition,
@@ -160,6 +161,27 @@ describe("game: it can be won", () => {
     state = tick(state, WIN_SECONDS); // every spike arrives AND the clock runs out
     expect(state.gameOver).toBe(true);
     expect(state.won).toBe(false);
+  });
+});
+
+describe("game: checkCollision (pure circle-circle overlap)", () => {
+  // The exact rule under direct test: two circles overlap iff the distance
+  // between their centers is no more than the sum of their radii. No
+  // entities, no canvas, no DOM — just numbers in, a boolean out.
+  it("returns true when two circles overlap", () => {
+    expect(checkCollision(0, 0, 10, 15, 0, 10)).toBe(true); // distance 15 < 20
+  });
+
+  it("returns true when two circles are exactly touching", () => {
+    expect(checkCollision(0, 0, 10, 20, 0, 10)).toBe(true); // distance 20 == 20
+  });
+
+  it("returns false when two circles are apart", () => {
+    expect(checkCollision(0, 0, 10, 100, 0, 10)).toBe(false); // distance 100 > 20
+  });
+
+  it("returns true when one circle is entirely inside the other", () => {
+    expect(checkCollision(0, 0, 50, 5, 5, 1)).toBe(true);
   });
 });
 

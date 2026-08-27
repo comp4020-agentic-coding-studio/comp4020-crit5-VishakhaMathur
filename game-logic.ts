@@ -217,7 +217,26 @@ export function createIntroState(width: number, height: number): GameState {
   return spawnEntityAt(state, "spike", INTRO_SPIKE_ANGLE, progress, 0);
 }
 
-/** The collision check: does a tap/click at (x, y) land on this entity? */
+/** Pure circle-circle overlap test: two circles collide when the distance
+ *  between their centers is no more than the sum of their radii. No DOM, no
+ *  canvas, no entities — just numbers in, a boolean out. */
+export function checkCollision(
+  x1: number,
+  y1: number,
+  radius1: number,
+  x2: number,
+  y2: number,
+  radius2: number,
+): boolean {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return distance <= radius1 + radius2;
+}
+
+/** The collision check: does a tap/click at (x, y) land on this entity?
+ *  Modeled as a zero-radius circle (the tap point) against the entity's
+ *  visual circle, padded by HIT_TOLERANCE for touch-friendliness. */
 export function isHit(
   entity: Entity,
   x: number,
@@ -227,7 +246,7 @@ export function isHit(
 ): boolean {
   const pos = entityPosition(entity, width, height);
   const radius = entityVisualRadius(entity.kind) + HIT_TOLERANCE;
-  return Math.hypot(pos.x - x, pos.y - y) <= radius;
+  return checkCollision(x, y, 0, pos.x, pos.y, radius);
 }
 
 /** Which entity (if any) a tap/click at (x, y) hits. Later entities are
