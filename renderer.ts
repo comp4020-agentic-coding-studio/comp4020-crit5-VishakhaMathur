@@ -185,10 +185,18 @@ function draw(
   width: number,
   height: number,
   animClock: number,
+  shakeX = 0,
+  shakeY = 0,
 ): void {
+  // The background clear/fill always covers the full canvas, untransformed —
+  // shake only displaces what's drawn on top of it, so a jittering offset
+  // never leaves a sliver of the previous frame visible at the edges.
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#0b1020";
   ctx.fillRect(0, 0, width, height);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
 
   drawStar(ctx, width, height, state.hits, animClock);
 
@@ -224,14 +232,18 @@ function draw(
     ctx.fillText("Click to play again", width / 2, height / 2 + 34);
     ctx.textAlign = "left";
   }
+
+  ctx.restore();
 }
 
 function pickAngle(): number {
   return Math.random() * Math.PI * 2;
 }
 
-// The intro spike's "pop" — a decorative particle burst. Purely visual, so
-// it lives here rather than in game-logic's testable state machine.
+// The "pop" — a decorative particle burst whenever a spike or balloon is
+// clicked. Purely visual, so it lives here rather than in game-logic's
+// testable state machine. Color signals the kind: fiery for a destroyed
+// spike (good), muted grey for a popped balloon (the wrong move).
 interface Particle {
   x: number;
   y: number;
@@ -239,7 +251,16 @@ interface Particle {
   vy: number;
   life: number;
   maxLife: number;
+  color: string;
 }
+
+const SPIKE_POP_COLOR = "255, 150, 100";
+const BALLOON_POP_COLOR = "160, 160, 190";
+
+// A short, decaying screen shake — triggered once when the round ends,
+// win or lose.
+const SHAKE_DURATION = 0.4;
+const SHAKE_MAGNITUDE = 10;
 
 export function start(canvas: HTMLCanvasElement): void {
   const rawCtx = canvas.getContext("2d");
@@ -265,7 +286,7 @@ export function start(canvas: HTMLCanvasElement): void {
   let difficulty: Difficulty = difficultyFor(0);
   let particles: Particle[] = [];
 
-  function popParticles(x: number, y: number): void {
+  function popParticles(x: number, y: number, color: string): void {
     const count = 14;
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
@@ -277,6 +298,7 @@ export function start(canvas: HTMLCanvasElement): void {
         vy: Math.sin(angle) * speed,
         life: 0.6,
         maxLife: 0.6,
+        color,
       });
     }
   }
@@ -290,12 +312,12 @@ export function start(canvas: HTMLCanvasElement): void {
     particles = particles.filter((p) => p.life > 0);
   }
 
-  function drawParticles(): void {
+  function drawParticles(shakeX: number, shakeY: number): void {
     for (const p of particles) {
       const alpha = Math.max(0, p.life / p.maxLife);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 150, 100, ${alpha})`;
+      ctx.arc(p.x + shakeX, p.y + shakeY, 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color}, ${alpha})`;
       ctx.fill();
     }
   }
@@ -313,21 +335,24 @@ export function start(canvas: HTMLCanvasElement): void {
       return;
     }
     const target = findEntityAt(state.entities, x, y, width, height);
+    if (!target) return;
+
+    const pos = entityPosition(target, width, height);
+    popParticles(pos.x, pos.y, target.kind === "spike" ? SPIKE_POP_COLOR : BALLOON_POP_COLOR);
+
     if (!state.started) {
       // Frozen opening screen: only a tap that actually lands on the intro
       // spike does anything — it pops, and that's what starts the round.
-      if (target) {
-        const pos = entityPosition(target, width, height);
-        popParticles(pos.x, pos.y);
-        state = startGame(resolveClick(state, target.id));
-      }
+      state = startGame(resolveClick(state, target.id));
       return;
     }
-    if (target) state = resolveClick(state, target.id);
+    state = resolveClick(state, target.id);
   });
 
   let lastTimestamp = 0;
   let animClock = 0;
+  let shakeTimeRemaining = 0;
+  let wasGameOver = false;
 
   function frame(timestamp: number): void {
     const dt = lastTimestamp === 0 ? 0 : Math.min((timestamp - lastTimestamp) / 1000, 0.1);
@@ -349,8 +374,21 @@ export function start(canvas: HTMLCanvasElement): void {
       }
     }
 
-    draw(ctx, state, width, height, animClock);
-    drawParticles();
+    // A one-shot shake the instant the round ends — win or lose.
+    if (state.gameOver && !wasGameOver) shakeTimeRemaining = SHAKE_DURATION;
+    wasGameOver = state.gameOver;
+
+    let shakeX = 0;
+    let shakeY = 0;
+    if (shakeTimeRemaining > 0) {
+      shakeTimeRemaining = Math.max(0, shakeTimeRemaining - dt);
+      const intensity = SHAKE_MAGNITUDE * (shakeTimeRemaining / SHAKE_DURATION);
+      shakeX = (Math.random() * 2 - 1) * intensity;
+      shakeY = (Math.random() * 2 - 1) * intensity;
+    }
+
+    draw(ctx, state, width, height, animClock, shakeX, shakeY);
+    drawParticles(shakeX, shakeY);
     requestAnimationFrame(frame);
   }
 
