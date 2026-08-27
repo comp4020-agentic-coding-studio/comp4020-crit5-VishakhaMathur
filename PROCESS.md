@@ -1,14 +1,5 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
-A reading-guide to how the work came together --- a map to your process, not an
-essay about it. Markers read this file and follow its citations; they don't
-trawl the repo for evidence you didn't point at, so if a moment mattered, cite
-it.
-
 This file is the shape; the course site's
 [assessment page](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#what-you-submit)
 is the requirement, and its
@@ -17,54 +8,46 @@ cover every deliverable.
 
 ## What I built
 
-One paragraph: the thing, and the idea behind it.
+**Balloon Shield**: a Glass Star sits at the center of the canvas; Spikes
+approach from the edges and must be clicked/tapped before they connect, or the
+star takes a hit — three hits and it shatters. Later, friendly Balloons also
+approach; popping one is the wrong move and costs a point, but leaving it alone
+to reach the star scores points instead. The whole thing teaches itself with no
+on-screen or off-screen text: the opening screen is frozen with exactly one
+spike hovering next to the star, and resolving that single spike is both the
+tutorial and the trigger that starts the round.
 
 ## The moments that mattered
 
-Three or four for an assignment; fewer is fine for a weekly prototype. Keep the
-list short so each moment has room to do all four jobs:
+1. **The opening screen had to teach without saying anything.** The obvious
+   move was a "click to start" label or a brief overlay explaining spikes vs.
+   balloons. Instead I froze the whole game state (`started: false`) on exactly
+   one spike hovering a couple of pixels from the star, so the single action
+   that unfreezes the round — tapping that spike — is also the only thing a
+   first-time player can do, and it teaches the entire mechanic by doing it. I
+   checked this against contract tests that assert no how-to-play language
+   anywhere in the shipped HTML, and against dedicated unit tests that the
+   state stays frozen until that click resolves.
+   [`02add3a`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/02add3a)
 
-1. **what happened** --- the problem, or the thing that went wrong
-2. **what you did instead of the obvious thing** --- the call you made, and why
-   it beat the obvious one
-3. **how you knew it was right** --- the check you ran, the viewport you looked
-   at, what you read before accepting the diff
-4. **the citation** --- a commit or commit range, a `CLAUDE.md` change, a check
-   that went from red to green, a prompt paired with the commit it produced
+2. **A wrong move needed real teeth, not just a missed opportunity.** My first
+   pass at balloons just let a mis-click forfeit the points a balloon would
+   have earned — functionally identical to ignoring it. The spec asks for "a
+   wrong move is possible," so I changed popping a balloon to actively deduct a
+   point, making it a genuine cost rather than a no-op. I verified this with a
+   unit test asserting the score after a balloon mis-click is strictly lower
+   than before, not just unchanged.
+   [`3ff15da`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/3ff15da)
 
-Jobs 2 and 3 are the ones the repo can't tell a reader on its own, so they're
-where the marks are. The strongest moments are the ones where a correction
-landed in the **harness** --- the standards and checks your work has to satisfy
---- rather than in a retry: a rule added to `CLAUDE.md`, a check wired up, an
-attempt thrown away. Retrying until it passes is the routine case, and changing
-what the work runs against is the skilled one.
+3. **Collision detection went into the harness, not just the feature.** Rather
+   than leaving "did the tap land on this entity" as logic buried inside
+   `isHit`, I pulled the actual geometry out into a standalone
+   `checkCollision(x1, y1, r1, x2, y2, r2)` primitive with its own dedicated
+   test block (overlapping, exactly-touching, apart, and one-inside-the-other
+   cases). That split — and labeling `game-logic.ts` as the pure-math section
+   the tests target — means every future entity or hit-test change gets
+   checked against plain numbers in/out, with no jsdom or canvas required.
+   [`078970f`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/078970f),
+   [`0a5b0cf`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/0a5b0cf)
 
-Cite each moment as a link whose text is the commit hash or range and whose
-target is this repo's commit or compare URL, so a reader clicks straight to the
-evidence:
-
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
-
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
-
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the verification better than a
-sentence does. Commit the file to this repo and link it with a **relative**
-path, which is what makes it render on GitHub: `![alt text](docs/before.png)`.
-Images don't count towards the word count and don't replace the citation.
-
-## Before you ship
-
-`pnpm check:evidence` verifies your citations resolve to real commits, that a
-reflection entry the marker reads is in `reflections/`, and that your
-`CLAUDE.md` is there --- before a marker ever opens the file. It checks that
-your map is traceable, not that it is good: the marker judges whether your
-small, deliberately chosen set of moments shows real judgement and reflection. A
-green check is not a substitute for that curation.
-
-Images aren't checked: unlike a citation whose SHA doesn't resolve, a broken
-image is visible the moment this file is rendered on GitHub.
+`pnpm check` is green (35 tests, typecheck, build) as of this submission.
