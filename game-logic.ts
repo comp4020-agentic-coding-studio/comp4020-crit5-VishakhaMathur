@@ -30,6 +30,9 @@ export interface GameState {
 export const MAX_HITS = 3;
 export const SPIKE_HIT_SCORE = 1;
 export const BALLOON_ARRIVAL_SCORE = 3;
+/** Popping a balloon is the wrong move: it costs points outright, not just
+ *  the points it would have earned. */
+export const BALLOON_MISCLICK_PENALTY = 1;
 export const BALLOON_UNLOCK_SECONDS = 15;
 /** A round must resolve inside 3 minutes: surviving this long is a win. */
 export const WIN_SECONDS = 150;
@@ -119,7 +122,7 @@ export function tick(state: GameState, dtSeconds: number): GameState {
 }
 
 /** The player clicking/tapping an entity before it arrives: destroying a
- *  spike scores; popping a balloon is the wrong move and forfeits its points. */
+ *  spike scores; popping a balloon is the wrong move and deducts points. */
 export function resolveClick(state: GameState, entityId: number): GameState {
   if (state.gameOver) return state;
 
@@ -127,7 +130,10 @@ export function resolveClick(state: GameState, entityId: number): GameState {
   if (!entity) return state;
 
   const entities = state.entities.filter((e) => e.id !== entityId);
-  const score = entity.kind === "spike" ? state.score + SPIKE_HIT_SCORE : state.score;
+  const score =
+    entity.kind === "spike"
+      ? state.score + SPIKE_HIT_SCORE
+      : state.score - BALLOON_MISCLICK_PENALTY;
   return { ...state, entities, score };
 }
 

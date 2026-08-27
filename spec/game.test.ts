@@ -129,14 +129,14 @@ describe("game: it can be lost", () => {
     expect(state.gameOver).toBe(false);
   });
 
-  it("popping a friendly balloon is the wrong move: it costs the points, not the star", () => {
+  it("popping a friendly balloon is the wrong move: it deducts points, not the star", () => {
     let state = createInitialState();
     state = spawnBalloon(state, 0, 0.1);
     const [balloon] = state.entities;
     const scoreBefore = state.score;
     state = resolveClick(state, balloon.id);
     expect(state.entities).toHaveLength(0);
-    expect(state.score).toBe(scoreBefore);
+    expect(state.score).toBeLessThan(scoreBefore);
     expect(state.hits).toBe(0);
   });
 });
