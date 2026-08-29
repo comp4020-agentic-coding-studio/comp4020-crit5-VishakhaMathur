@@ -90,11 +90,15 @@ function playNoiseBurst(opts: NoiseBurstOptions, when = 0): void {
 }
 
 /** The correct move: a meteor destroyed before it reaches the planet — a
- *  noise-burst boom layered under a low sine thump for real explosive punch,
- *  rather than a simple tonal blip. */
+ *  sharp noise "crack" transient, a deeper noise "body" underneath it, and a
+ *  short, barely-sweeping low thump for weight. Deliberately NOT a
+ *  fast-sweeping tone: a sine gliding down in pitch is the classic cartoon
+ *  balloon-pop/deflate sound, which is exactly what this used to sound like
+ *  — the thump here holds close to one low pitch instead of sliding. */
 export function playMeteorExplosion(): void {
-  playNoiseBurst({ duration: 0.35, peakGain: 0.3 });
-  playTone({ type: "sine", freqStart: 150, freqEnd: 35, duration: 0.3, peakGain: 0.28 });
+  playNoiseBurst({ duration: 0.05, peakGain: 0.3, filterStart: 5000, filterEnd: 1800 });
+  playNoiseBurst({ duration: 0.32, peakGain: 0.32, filterStart: 1600, filterEnd: 100 });
+  playTone({ type: "sine", freqStart: 90, freqEnd: 60, duration: 0.14, peakGain: 0.3 });
 }
 
 /** The wrong move, at planet scale: a meteor gets through and the shield
@@ -116,11 +120,6 @@ export function playBalloonMiss(): void {
 /** A spike reached the Glass Star unresolved. */
 export function playHitTaken(): void {
   playTone({ type: "sawtooth", freqStart: 140, freqEnd: 60, duration: 0.22, peakGain: 0.22 });
-}
-
-/** Round lost: three hits taken. */
-export function playGameOver(): void {
-  playArpeggio([440, 349.23, 293.66, 220], 0.22, 0.14);
 }
 
 /** Round won: survived the full timer. */

@@ -410,6 +410,9 @@ interface Shockwave {
 
 const SPIKE_POP_COLORS = ["255, 210, 60", "255, 122, 0", "220, 40, 20"];
 const BALLOON_POP_COLOR = "255, 205, 80";
+// Gold/green, matching the escape pods — the friendly, celebratory palette
+// for the win effect, in contrast to the fiery reds/oranges of a loss.
+const VICTORY_COLORS = ["255, 215, 90", "80, 220, 120"];
 
 // A short, decaying screen shake — triggered once when the round ends,
 // win or lose.
@@ -505,6 +508,18 @@ export function start(canvas: HTMLCanvasElement): void {
     life: 1.1,
     radiusMin: 3,
     radiusMax: 8,
+  };
+
+  // A festive burst for surviving the full timer — as big as the planet
+  // explosion, but slower and longer-hanging, so it reads as fireworks
+  // rather than a blast.
+  const VICTORY_POP: PopOptions = {
+    count: 90,
+    speedMin: 80,
+    speedMax: 300,
+    life: 1.4,
+    radiusMin: 3,
+    radiusMax: 7,
   };
 
   function popParticles(x: number, y: number, colors: string[], opts: PopOptions): void {
@@ -637,12 +652,16 @@ export function start(canvas: HTMLCanvasElement): void {
     }
 
     // A one-shot shake and stinger the instant the round ends — win or lose.
-    // A loss additionally blows up the planet itself: a bigger particle
-    // burst and shockwave than any single meteor pop, with a deeper,
-    // longer explosion sound distinct from playMeteorExplosion.
+    // A win gets a gold/green fireworks-style particle burst (state.entities
+    // is already cleared by tick() the instant WIN_SECONDS is reached, so
+    // no meteor/pod is left mid-flight behind it); a loss instead blows up
+    // the planet itself with a fiery burst and a deeper explosion sound.
     if (state.gameOver && !wasGameOver) {
       shakeTimeRemaining = SHAKE_DURATION;
       if (state.won) {
+        popParticles(width / 2, height / 2, VICTORY_COLORS, VICTORY_POP);
+        spawnShockwave(width / 2, height / 2, VICTORY_COLORS[0]);
+        spawnShockwave(width / 2, height / 2, VICTORY_COLORS[1]);
         playWin();
       } else {
         popParticles(width / 2, height / 2, SPIKE_POP_COLORS, PLANET_POP);

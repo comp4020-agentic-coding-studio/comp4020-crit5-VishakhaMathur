@@ -44,7 +44,7 @@ export const BALLOON_ARRIVAL_SCORE = 3;
 export const BALLOON_MISCLICK_PENALTY = 1;
 export const BALLOON_UNLOCK_SECONDS = 15;
 /** A round must resolve inside 3 minutes: surviving this long is a win. */
-export const WIN_SECONDS = 150;
+export const WIN_SECONDS = 180;
 
 export function createInitialState(): GameState {
   return {
@@ -121,7 +121,9 @@ export function tick(state: GameState, dtSeconds: number): GameState {
 
   return {
     ...state,
-    entities: remaining,
+    // A win clears the board — nothing should still be incoming once the
+    // round has been declared survived.
+    entities: won ? [] : remaining,
     hits,
     score,
     gameOver: lost || won,
