@@ -7,11 +7,12 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #0b1020;
+  background: radial-gradient(circle at 50% 20%, #1a2244 0%, #0b1020 55%, #060811 100%);
   font-family: system-ui, sans-serif;
 }
 
 main {
+  position: relative;
   display: block;
   height: 100dvh;
   width: 100vw;
@@ -23,6 +24,123 @@ canvas#game {
   height: 100%;
   touch-action: none;
   cursor: pointer;
+}
+
+/* Glassmorphic score/hits HUD, floating over the canvas. */
+.hud {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 10px 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    0 0 32px rgba(140, 190, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-family:
+    ui-sans-serif,
+    -apple-system,
+    "Segoe UI",
+    Inter,
+    system-ui,
+    sans-serif;
+  pointer-events: none;
+}
+
+.hud-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.hud-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(244, 246, 251, 0.5);
+}
+
+.hud-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: #f4f6fb;
+  text-shadow: 0 0 12px rgba(150, 200, 255, 0.55);
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+/* Hits glows a warmer, more urgent color as the player nears game over —
+   a quiet cue toward the loss condition without any extra text. */
+.hud-value.is-critical {
+  color: #ffab98;
+  text-shadow: 0 0 14px rgba(255, 110, 80, 0.75);
+}
+
+.hud-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Game-over glass panel: dims and blurs the play area behind it. */
+.game-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 20, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+/* pointer-events stays none even when visible: input is handled by the
+   canvas underneath (see renderer.ts's pointerdown handler), so the overlay
+   must never intercept the "click to play again" tap. */
+.game-over.is-visible {
+  opacity: 1;
+}
+
+.game-over__card {
+  padding: 32px 48px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  text-align: center;
+  color: #f4f6fb;
+}
+
+.game-over__title {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.game-over__score {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: rgba(244, 246, 251, 0.85);
+}
+
+.game-over__hint {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(244, 246, 251, 0.6);
 }
 
 .sr-only {

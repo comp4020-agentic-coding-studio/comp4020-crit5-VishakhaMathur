@@ -6,6 +6,7 @@ import {
   type GameState,
   BALLOON_RADIUS,
   GLASS_STAR_RADIUS,
+  MAX_HITS,
   SPIKE_RADIUS,
   createIntroState,
   difficultyFor,
@@ -17,6 +18,7 @@ import {
   startGame,
   tick,
 } from "./game-logic";
+import { playBalloonMiss, playGameOver, playHitTaken, playMeteorExplosion, playWin } from "./sound";
 
 const STAR_RADIUS = GLASS_STAR_RADIUS;
 const MAX_CRACKS = 3;
@@ -24,6 +26,36 @@ const MAX_CRACKS = 3;
 // animClock drives pulsing/bobbing/sparkle — a real-time clock, independent
 // of state.elapsed, so the opening screen's spike can still pulse and beg to
 // be tapped while the game itself is frozen.
+// The shield: a ring orbiting the star, drawn relative to the star's own
+// (0, 0)-centered coordinate space — called from inside drawStar's
+// translate. It's full and solid at 0 hits, and each hit taken thins its
+// stroke and opens its dashes into wider gaps, so "the shield is failing"
+// reads visually with no HUD text required. Once critical (one hit from
+// game over) it also flickers, borrowing the HUD's warm red warning color.
+function drawShieldRing(ctx: CanvasRenderingContext2D, hits: number, animClock: number): void {
+  const health = Math.max(0, 1 - hits / MAX_HITS);
+  const ringRadius = STAR_RADIUS * 1.55;
+  const critical = hits >= MAX_HITS - 1;
+  const flicker = critical ? 0.55 + 0.45 * Math.sin(animClock * 16) : 1;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+  // Dashes grow sparser (shorter segments, wider gaps) as health drops, so
+  // the ring itself looks increasingly broken rather than just thinner.
+  const dash = 4 + health * 22;
+  const gap = 3 + (1 - health) * 26;
+  ctx.setLineDash([dash, gap]);
+  ctx.lineDashOffset = -animClock * 6;
+  ctx.lineWidth = 1 + health * 4.5;
+  const color = critical ? "255, 120, 100" : "150, 210, 255";
+  ctx.strokeStyle = `rgba(${color}, ${(0.35 + health * 0.45) * flicker})`;
+  ctx.shadowColor = `rgba(${color}, ${0.8 * flicker})`;
+  ctx.shadowBlur = 10 + health * 6;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawStar(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -47,6 +79,8 @@ function drawStar(
   ctx.beginPath();
   ctx.arc(0, 0, haloRadius, 0, Math.PI * 2);
   ctx.fill();
+
+  drawShieldRing(ctx, hits, animClock);
 
   function starPath(radius: number): void {
     ctx.beginPath();
@@ -117,16 +151,20 @@ function drawStar(
   ctx.restore();
 }
 
-// Spikes pulse — an urgent, "touch me" glow — while balloons drift calmly.
-// The contrast is the affordance: no text says which to tap, but one shape
+// Meteors (the "spike" entity kind — see game-logic.ts) pulse with a fiery
+// glow — an urgent, "touch me" cue — while balloons drift calmly. The
+// contrast is the affordance: no text says which to tap, but one shape
 // visibly wants attention and the other doesn't. `intensity` lets the very
-// first spike (the frozen opening screen's only entity) pulse harder than
-// spikes do during normal play, since it's the one thing the player must
-// notice with no other cue on screen.
-function drawSpike(
+// first meteor (the frozen opening screen's only entity) pulse harder than
+// meteors do during normal play, since it's the one thing the player must
+// notice with no other cue on screen. `angle` is the entity's travel angle
+// (see entityPosition in game-logic.ts) — the flame trail points back along
+// it, away from the star it's falling toward.
+function drawMeteor(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
+  angle: number,
   pulse: number,
   intensity = 1,
 ): void {
@@ -135,8 +173,8 @@ function drawSpike(
 
   const glowRadius = SPIKE_RADIUS * (1.5 + pulse * 0.6) * intensity;
   const glow = ctx.createRadialGradient(0, 0, SPIKE_RADIUS * 0.5, 0, 0, glowRadius);
-  glow.addColorStop(0, `rgba(255, 90, 60, ${(0.35 + pulse * 0.25) * Math.min(intensity, 1.3)})`);
-  glow.addColorStop(1, "rgba(255, 90, 60, 0)");
+  glow.addColorStop(0, `rgba(255, 110, 40, ${(0.35 + pulse * 0.25) * Math.min(intensity, 1.3)})`);
+  glow.addColorStop(1, "rgba(255, 110, 40, 0)");
   ctx.fillStyle = glow;
   ctx.beginPath();
   ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
@@ -153,13 +191,69 @@ function drawSpike(
     ctx.stroke();
   }
 
-  ctx.fillStyle = "#c0392b";
+  // The flame trail: a tapering streak pointing away from the star, along
+  // the entity's spawn angle (entityPosition places it at
+  // center + r*(cos angle, sin angle), so +angle is "outward").
+  ctx.save();
+  ctx.rotate(angle);
+  const trailLength = SPIKE_RADIUS * (2.4 + pulse * 0.8);
+  const trail = ctx.createLinearGradient(0, 0, trailLength, 0);
+  trail.addColorStop(0, "rgba(255, 190, 90, 0.6)");
+  trail.addColorStop(1, "rgba(255, 80, 20, 0)");
   ctx.beginPath();
-  ctx.moveTo(0, -SPIKE_RADIUS);
-  ctx.lineTo(SPIKE_RADIUS * 0.9, SPIKE_RADIUS * 0.8);
-  ctx.lineTo(-SPIKE_RADIUS * 0.9, SPIKE_RADIUS * 0.8);
+  ctx.moveTo(0, -SPIKE_RADIUS * 0.5);
+  ctx.quadraticCurveTo(trailLength * 0.5, 0, trailLength, 0);
+  ctx.quadraticCurveTo(trailLength * 0.5, 0, 0, SPIKE_RADIUS * 0.5);
   ctx.closePath();
+  ctx.fillStyle = trail;
   ctx.fill();
+  ctx.restore();
+
+  // The rocky body: a jagged (but fixed, non-flickering) polygon so it reads
+  // as a tumbling chunk of rock rather than a smooth ball.
+  const body = ctx.createRadialGradient(
+    -SPIKE_RADIUS * 0.3,
+    -SPIKE_RADIUS * 0.3,
+    SPIKE_RADIUS * 0.1,
+    0,
+    0,
+    SPIKE_RADIUS,
+  );
+  body.addColorStop(0, "#9c7a5e");
+  body.addColorStop(0.6, "#5c4433");
+  body.addColorStop(1, "#33241a");
+
+  const vertexCount = 8;
+  ctx.beginPath();
+  for (let i = 0; i < vertexCount; i++) {
+    const vertexAngle = (Math.PI * 2 * i) / vertexCount;
+    const wobble = 0.78 + 0.22 * Math.sin(i * 2.4);
+    const r = SPIKE_RADIUS * wobble;
+    const px = Math.cos(vertexAngle) * r;
+    const py = Math.sin(vertexAngle) * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 150, 70, ${0.55 + pulse * 0.3})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // A few fixed craters for surface detail.
+  ctx.fillStyle = "rgba(25, 17, 13, 0.55)";
+  const craters = [
+    { x: -SPIKE_RADIUS * 0.3, y: -SPIKE_RADIUS * 0.1, r: SPIKE_RADIUS * 0.22 },
+    { x: SPIKE_RADIUS * 0.25, y: SPIKE_RADIUS * 0.3, r: SPIKE_RADIUS * 0.16 },
+    { x: SPIKE_RADIUS * 0.1, y: -SPIKE_RADIUS * 0.35, r: SPIKE_RADIUS * 0.12 },
+  ];
+  for (const crater of craters) {
+    ctx.beginPath();
+    ctx.arc(crater.x, crater.y, crater.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.restore();
 }
 
@@ -179,12 +273,52 @@ function drawBalloon(ctx: CanvasRenderingContext2D, x: number, y: number, bob: n
   ctx.restore();
 }
 
+// The distant starfield backdrop — twinkling points behind everything else.
+// Deliberately drawn before the shake translate below: it's meant to read as
+// far-off space, unmoved by the shield's own shake.
+interface Star {
+  x: number;
+  y: number;
+  radius: number;
+  phase: number;
+  twinkleSpeed: number;
+  baseAlpha: number;
+}
+
+function createStars(width: number, height: number): Star[] {
+  const count = Math.round((width * height) / 6000);
+  const stars: Star[] = [];
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      radius: 0.5 + Math.random() * 1.4,
+      phase: Math.random() * Math.PI * 2,
+      twinkleSpeed: 0.4 + Math.random() * 1.6,
+      baseAlpha: 0.25 + Math.random() * 0.35,
+    });
+  }
+  return stars;
+}
+
+function drawStarfield(ctx: CanvasRenderingContext2D, stars: Star[], animClock: number): void {
+  for (const star of stars) {
+    const twinkle = 0.5 + 0.5 * Math.sin(animClock * star.twinkleSpeed + star.phase);
+    const alpha = Math.min(1, star.baseAlpha + twinkle * 0.5);
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+    ctx.fill();
+  }
+}
+
 function draw(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   width: number,
   height: number,
   animClock: number,
+  stars: Star[],
   shakeX = 0,
   shakeY = 0,
 ): void {
@@ -194,6 +328,7 @@ function draw(
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#0b1020";
   ctx.fillRect(0, 0, width, height);
+  drawStarfield(ctx, stars, animClock);
 
   ctx.save();
   ctx.translate(shakeX, shakeY);
@@ -207,30 +342,11 @@ function draw(
   for (const entity of state.entities) {
     const { x, y } = entityPosition(entity, width, height);
     if (entity.kind === "spike") {
-      drawSpike(ctx, x, y, pulse, introIntensity);
+      drawMeteor(ctx, x, y, entity.angle, pulse, introIntensity);
     } else {
       const bob = Math.sin(animClock * 2 + entity.id) * 4;
       drawBalloon(ctx, x, y, bob);
     }
-  }
-
-  ctx.fillStyle = "#f4f6fb";
-  ctx.font = "16px system-ui, sans-serif";
-  ctx.textBaseline = "top";
-  ctx.fillText(`Score: ${state.score}`, 12, 12);
-  ctx.fillText(`Hits: ${state.hits} / 3`, 12, 34);
-
-  if (state.gameOver) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.font = "28px system-ui, sans-serif";
-    ctx.fillText(state.won ? "You Win!" : "Game Over", width / 2, height / 2 - 30);
-    ctx.font = "18px system-ui, sans-serif";
-    ctx.fillText(`Score: ${state.score}`, width / 2, height / 2 + 6);
-    ctx.fillText("Click to play again", width / 2, height / 2 + 34);
-    ctx.textAlign = "left";
   }
 
   ctx.restore();
@@ -242,8 +358,9 @@ function pickAngle(): number {
 
 // The "pop" — a decorative particle burst whenever a spike or balloon is
 // clicked. Purely visual, so it lives here rather than in game-logic's
-// testable state machine. Color signals the kind: fiery for a destroyed
-// spike (good), muted grey for a popped balloon (the wrong move).
+// testable state machine. Color signals the kind: a big neon
+// orange/electric-blue explosion for a destroyed spike (the successful,
+// intended tap), muted grey for a popped balloon (the wrong move).
 interface Particle {
   x: number;
   y: number;
@@ -252,9 +369,21 @@ interface Particle {
   life: number;
   maxLife: number;
   color: string;
+  radius: number;
 }
 
-const SPIKE_POP_COLOR = "255, 150, 100";
+// A one-off expanding, fading ring — the "shockwave" that sells a spike
+// destruction as a bigger, higher-energy event than a normal particle pop.
+interface Shockwave {
+  x: number;
+  y: number;
+  life: number;
+  maxLife: number;
+  maxRadius: number;
+  color: string;
+}
+
+const SPIKE_POP_COLORS = ["255, 122, 0", "0, 200, 255"];
 const BALLOON_POP_COLOR = "160, 160, 190";
 
 // A short, decaying screen shake — triggered once when the round ends,
@@ -267,8 +396,32 @@ export function start(canvas: HTMLCanvasElement): void {
   if (!rawCtx) throw new Error("2d canvas context unavailable");
   const ctx: CanvasRenderingContext2D = rawCtx;
 
+  // The score/hits HUD and the game-over card are real DOM elements layered
+  // over the canvas (see index.html/styles.css) rather than drawn text, so
+  // they can use backdrop-filter glass styling. Nothing here changes what
+  // the tested game-logic state machine does — only how it's presented.
+  const hudScore = document.querySelector<HTMLElement>("#hud-score");
+  const hudHits = document.querySelector<HTMLElement>("#hud-hits");
+  const gameOverEl = document.querySelector<HTMLElement>("#game-over");
+  const gameOverTitle = document.querySelector<HTMLElement>("#game-over-title");
+  const gameOverScore = document.querySelector<HTMLElement>("#game-over-score");
+
+  function syncHud(state: GameState): void {
+    if (hudScore) hudScore.textContent = `${state.score}`;
+    if (hudHits) {
+      hudHits.textContent = `${state.hits} / ${MAX_HITS}`;
+      hudHits.classList.toggle("is-critical", state.hits >= MAX_HITS - 1);
+    }
+    if (!gameOverEl) return;
+    gameOverEl.classList.toggle("is-visible", state.gameOver);
+    if (!state.gameOver) return;
+    if (gameOverTitle) gameOverTitle.textContent = state.won ? "You Win!" : "Game Over";
+    if (gameOverScore) gameOverScore.textContent = `Score: ${state.score}`;
+  }
+
   let width = 0;
   let height = 0;
+  let stars: Star[] = [];
 
   function resize(): void {
     const dpr = window.devicePixelRatio || 1;
@@ -277,6 +430,7 @@ export function start(canvas: HTMLCanvasElement): void {
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    stars = createStars(width, height);
   }
   window.addEventListener("resize", resize);
   resize();
@@ -285,40 +439,103 @@ export function start(canvas: HTMLCanvasElement): void {
   let spawnAccumulator = 0;
   let difficulty: Difficulty = difficultyFor(0);
   let particles: Particle[] = [];
+  let shockwaves: Shockwave[] = [];
 
-  function popParticles(x: number, y: number, color: string): void {
-    const count = 14;
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
-      const speed = 60 + Math.random() * 60;
+  interface PopOptions {
+    count: number;
+    speedMin: number;
+    speedMax: number;
+    life: number;
+    radiusMin: number;
+    radiusMax: number;
+  }
+
+  const BALLOON_POP: PopOptions = {
+    count: 14,
+    speedMin: 60,
+    speedMax: 120,
+    life: 0.6,
+    radiusMin: 3,
+    radiusMax: 3,
+  };
+
+  // Bigger, faster, longer-lived, and with size variety — a "massive,
+  // high-energy" burst rather than a small pop, for the tap the game
+  // actually wants: destroying a spike.
+  const SPIKE_POP: PopOptions = {
+    count: 48,
+    speedMin: 90,
+    speedMax: 320,
+    life: 0.8,
+    radiusMin: 2,
+    radiusMax: 6,
+  };
+
+  function popParticles(x: number, y: number, colors: string[], opts: PopOptions): void {
+    for (let i = 0; i < opts.count; i++) {
+      const angle = (Math.PI * 2 * i) / opts.count + Math.random() * 0.3;
+      const speed = opts.speedMin + Math.random() * (opts.speedMax - opts.speedMin);
+      const radius = opts.radiusMin + Math.random() * (opts.radiusMax - opts.radiusMin);
+      const color = colors[Math.floor(Math.random() * colors.length)];
       particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: 0.6,
-        maxLife: 0.6,
+        life: opts.life,
+        maxLife: opts.life,
         color,
+        radius,
       });
     }
+  }
+
+  function spawnShockwave(x: number, y: number, color: string): void {
+    shockwaves.push({ x, y, life: 0.35, maxLife: 0.35, maxRadius: 70, color });
   }
 
   function updateParticles(dt: number): void {
     for (const p of particles) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      // A little drag so the burst decelerates rather than flying out at a
+      // constant speed — reads as an explosion losing energy, not a spray.
+      p.vx *= 1 - Math.min(1, dt * 2.2);
+      p.vy *= 1 - Math.min(1, dt * 2.2);
       p.life -= dt;
     }
     particles = particles.filter((p) => p.life > 0);
+
+    for (const s of shockwaves) s.life -= dt;
+    shockwaves = shockwaves.filter((s) => s.life > 0);
   }
 
   function drawParticles(shakeX: number, shakeY: number): void {
+    for (const s of shockwaves) {
+      const t = 1 - s.life / s.maxLife;
+      const radius = s.maxRadius * t;
+      const alpha = 1 - t;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(s.x + shakeX, s.y + shakeY, radius, 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(${s.color}, ${alpha})`;
+      ctx.shadowColor = `rgba(${s.color}, ${alpha})`;
+      ctx.shadowBlur = 16;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     for (const p of particles) {
       const alpha = Math.max(0, p.life / p.maxLife);
+      ctx.save();
+      ctx.shadowColor = `rgba(${p.color}, ${alpha})`;
+      ctx.shadowBlur = 10;
       ctx.beginPath();
-      ctx.arc(p.x + shakeX, p.y + shakeY, 3, 0, Math.PI * 2);
+      ctx.arc(p.x + shakeX, p.y + shakeY, p.radius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${p.color}, ${alpha})`;
       ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -338,7 +555,14 @@ export function start(canvas: HTMLCanvasElement): void {
     if (!target) return;
 
     const pos = entityPosition(target, width, height);
-    popParticles(pos.x, pos.y, target.kind === "spike" ? SPIKE_POP_COLOR : BALLOON_POP_COLOR);
+    if (target.kind === "spike") {
+      popParticles(pos.x, pos.y, SPIKE_POP_COLORS, SPIKE_POP);
+      spawnShockwave(pos.x, pos.y, SPIKE_POP_COLORS[0]);
+      playMeteorExplosion();
+    } else {
+      popParticles(pos.x, pos.y, [BALLOON_POP_COLOR], BALLOON_POP);
+      playBalloonMiss();
+    }
 
     if (!state.started) {
       // Frozen opening screen: only a tap that actually lands on the intro
@@ -361,7 +585,9 @@ export function start(canvas: HTMLCanvasElement): void {
     updateParticles(dt);
 
     if (state.started && !state.gameOver) {
+      const hitsBefore = state.hits;
       state = tick(state, dt);
+      if (state.hits > hitsBefore) playHitTaken();
       difficulty = difficultyFor(state.elapsed);
 
       spawnAccumulator += dt * 1000;
@@ -374,8 +600,12 @@ export function start(canvas: HTMLCanvasElement): void {
       }
     }
 
-    // A one-shot shake the instant the round ends — win or lose.
-    if (state.gameOver && !wasGameOver) shakeTimeRemaining = SHAKE_DURATION;
+    // A one-shot shake and stinger the instant the round ends — win or lose.
+    if (state.gameOver && !wasGameOver) {
+      shakeTimeRemaining = SHAKE_DURATION;
+      if (state.won) playWin();
+      else playGameOver();
+    }
     wasGameOver = state.gameOver;
 
     let shakeX = 0;
@@ -387,8 +617,9 @@ export function start(canvas: HTMLCanvasElement): void {
       shakeY = (Math.random() * 2 - 1) * intensity;
     }
 
-    draw(ctx, state, width, height, animClock, shakeX, shakeY);
+    draw(ctx, state, width, height, animClock, stars, shakeX, shakeY);
     drawParticles(shakeX, shakeY);
+    syncHud(state);
     requestAnimationFrame(frame);
   }
 

@@ -29,6 +29,26 @@
     <main>
       <h1 class="sr-only">Balloon Shield</h1>
       <canvas id="game"></canvas>
+
+      <div class="hud" aria-hidden="true">
+        <div class="hud-stat">
+          <span class="hud-label">Score</span>
+          <span class="hud-value" id="hud-score">0</span>
+        </div>
+        <span class="hud-divider"></span>
+        <div class="hud-stat">
+          <span class="hud-label">Hits</span>
+          <span class="hud-value" id="hud-hits">0 / 3</span>
+        </div>
+      </div>
+
+      <div class="game-over" id="game-over" aria-hidden="true">
+        <div class="game-over__card">
+          <p class="game-over__title" id="game-over-title">Game Over</p>
+          <p class="game-over__score" id="game-over-score">Score: 0</p>
+          <p class="game-over__hint">Click to play again</p>
+        </div>
+      </div>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>
