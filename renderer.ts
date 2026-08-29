@@ -1,5 +1,5 @@
-// Canvas rendering, input handling and the animation loop for Balloon
-// Shield. Everything here is the "how"; the rules it draws and reacts to,
+// Canvas rendering, input handling and the animation loop for Planetary
+// Defense. Everything here is the "how"; the rules it draws and reacts to,
 // including the collision math, live in game-logic.ts and are what's tested.
 import {
   type Difficulty,
@@ -18,16 +18,19 @@ import {
   startGame,
   tick,
 } from "./game-logic";
-import { playBalloonMiss, playGameOver, playHitTaken, playMeteorExplosion, playWin } from "./sound";
+import { playBalloonMiss, playHitTaken, playMeteorExplosion, playPlanetDestroyed, playWin } from "./sound";
 
-const STAR_RADIUS = GLASS_STAR_RADIUS;
-const MAX_CRACKS = 3;
+// A purely visual radius, deliberately decoupled from GLASS_STAR_RADIUS (the
+// tested collision constant in game-logic.ts) — scaling it here only makes
+// the planet and its shield ring (sized relative to STAR_RADIUS below) read
+// bigger on screen, without touching any hit/arrival math.
+const STAR_RADIUS = GLASS_STAR_RADIUS * 1.3;
 
 // animClock drives pulsing/bobbing/sparkle — a real-time clock, independent
 // of state.elapsed, so the opening screen's spike can still pulse and beg to
 // be tapped while the game itself is frozen.
-// The shield: a ring orbiting the star, drawn relative to the star's own
-// (0, 0)-centered coordinate space — called from inside drawStar's
+// The shield: a ring orbiting the planet, drawn relative to the planet's own
+// (0, 0)-centered coordinate space — called from inside drawPlanet's
 // translate. It's full and solid at 0 hits, and each hit taken thins its
 // stroke and opens its dashes into wider gaps, so "the shield is failing"
 // reads visually with no HUD text required. Once critical (one hit from
@@ -56,7 +59,7 @@ function drawShieldRing(ctx: CanvasRenderingContext2D, hits: number, animClock: 
   ctx.restore();
 }
 
-function drawStar(
+function drawPlanet(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -68,13 +71,13 @@ function drawStar(
   ctx.save();
   ctx.translate(cx, cy);
 
-  // A slow, calm ambient glow behind the star — a "breathing" halo, gentle
-  // enough not to compete with a spike's urgent pulse.
+  // A slow, calm atmospheric glow behind the planet — a "breathing" halo,
+  // gentle enough not to compete with a meteor's urgent pulse.
   const breath = 0.5 + 0.5 * Math.sin(animClock * 1.2);
   const haloRadius = STAR_RADIUS * (2.2 + breath * 0.3);
   const halo = ctx.createRadialGradient(0, 0, STAR_RADIUS * 0.6, 0, 0, haloRadius);
-  halo.addColorStop(0, `rgba(150, 200, 255, ${0.18 + breath * 0.08})`);
-  halo.addColorStop(1, "rgba(150, 200, 255, 0)");
+  halo.addColorStop(0, `rgba(120, 220, 210, ${0.18 + breath * 0.08})`);
+  halo.addColorStop(1, "rgba(120, 220, 210, 0)");
   ctx.fillStyle = halo;
   ctx.beginPath();
   ctx.arc(0, 0, haloRadius, 0, Math.PI * 2);
@@ -82,61 +85,52 @@ function drawStar(
 
   drawShieldRing(ctx, hits, animClock);
 
-  function starPath(radius: number): void {
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-      const outerAngle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-      const innerAngle = outerAngle + Math.PI / 5;
-      const outer = { x: Math.cos(outerAngle) * radius, y: Math.sin(outerAngle) * radius };
-      const inner = { x: Math.cos(innerAngle) * radius * 0.5, y: Math.sin(innerAngle) * radius * 0.5 };
-      if (i === 0) ctx.moveTo(outer.x, outer.y);
-      else ctx.lineTo(outer.x, outer.y);
-      ctx.lineTo(inner.x, inner.y);
-    }
-    ctx.closePath();
-  }
-
-  // Glassy fill: a gradient standing in for a highlight/refraction, instead
-  // of a flat tint.
-  const glass = ctx.createRadialGradient(
-    -STAR_RADIUS * 0.3,
+  // The planet body: a blue/green sphere, lit from the upper-left so it
+  // reads as a globe rather than a flat disc.
+  const globe = ctx.createRadialGradient(
+    -STAR_RADIUS * 0.35,
     -STAR_RADIUS * 0.4,
     STAR_RADIUS * 0.1,
     0,
     0,
     STAR_RADIUS,
   );
-  glass.addColorStop(0, "rgba(240, 250, 255, 0.95)");
-  glass.addColorStop(0.55, "rgba(190, 225, 255, 0.85)");
-  glass.addColorStop(1, "rgba(140, 190, 250, 0.75)");
-  starPath(STAR_RADIUS);
-  ctx.fillStyle = glass;
+  globe.addColorStop(0, "#bdf2d8");
+  globe.addColorStop(0.4, "#3ec2b0");
+  globe.addColorStop(0.75, "#1f6fa8");
+  globe.addColorStop(1, "#0d3a66");
+  ctx.beginPath();
+  ctx.arc(0, 0, STAR_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = globe;
   ctx.fill();
-  ctx.strokeStyle = "#ffffff";
+
+  // A few fixed landmass blobs, clipped to the globe, for a lived-in look.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, STAR_RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = "rgba(60, 140, 70, 0.55)";
+  const landmasses = [
+    { x: -STAR_RADIUS * 0.35, y: -STAR_RADIUS * 0.1, r: STAR_RADIUS * 0.32 },
+    { x: STAR_RADIUS * 0.3, y: STAR_RADIUS * 0.25, r: STAR_RADIUS * 0.24 },
+    { x: STAR_RADIUS * 0.05, y: -STAR_RADIUS * 0.45, r: STAR_RADIUS * 0.16 },
+  ];
+  for (const land of landmasses) {
+    ctx.beginPath();
+    ctx.arc(land.x, land.y, land.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // A thin bright rim traces the atmosphere's edge against space.
+  ctx.beginPath();
+  ctx.arc(0, 0, STAR_RADIUS, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(180, 240, 255, 0.65)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // A faint inner star traces the highlight, for a faceted-glass look.
-  ctx.save();
-  ctx.globalAlpha = 0.5;
-  starPath(STAR_RADIUS * 0.55);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.restore();
-
-  // Cracks accumulate with hits taken, so the glass visibly weakens.
-  ctx.strokeStyle = "rgba(40, 60, 90, 0.6)";
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < hits; i++) {
-    const crackAngle = (Math.PI * 2 * i) / MAX_CRACKS + 0.4;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(crackAngle) * STAR_RADIUS * 0.9, Math.sin(crackAngle) * STAR_RADIUS * 0.9);
-    ctx.stroke();
-  }
-
-  // A few twinkling sparkle points orbiting the star, each on its own phase.
+  // A few twinkling sparkle points orbiting the planet, each on its own
+  // phase — distant satellites/debris catching the light.
   for (let i = 0; i < 4; i++) {
     const angle = (Math.PI * 2 * i) / 4 + animClock * 0.3;
     const twinkle = 0.5 + 0.5 * Math.sin(animClock * 3 + i * 1.7);
@@ -152,14 +146,14 @@ function drawStar(
 }
 
 // Meteors (the "spike" entity kind — see game-logic.ts) pulse with a fiery
-// glow — an urgent, "touch me" cue — while balloons drift calmly. The
+// glow — an urgent, "touch me" cue — while escape pods drift calmly. The
 // contrast is the affordance: no text says which to tap, but one shape
 // visibly wants attention and the other doesn't. `intensity` lets the very
 // first meteor (the frozen opening screen's only entity) pulse harder than
 // meteors do during normal play, since it's the one thing the player must
 // notice with no other cue on screen. `angle` is the entity's travel angle
 // (see entityPosition in game-logic.ts) — the flame trail points back along
-// it, away from the star it's falling toward.
+// it, away from the planet it's falling toward.
 function drawMeteor(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -191,7 +185,7 @@ function drawMeteor(
     ctx.stroke();
   }
 
-  // The flame trail: a tapering streak pointing away from the star, along
+  // The flame trail: a tapering streak pointing away from the planet, along
   // the entity's spawn angle (entityPosition places it at
   // center + r*(cos angle, sin angle), so +angle is "outward").
   ctx.save();
@@ -219,9 +213,9 @@ function drawMeteor(
     0,
     SPIKE_RADIUS,
   );
-  body.addColorStop(0, "#9c7a5e");
-  body.addColorStop(0.6, "#5c4433");
-  body.addColorStop(1, "#33241a");
+  body.addColorStop(0, "#918577");
+  body.addColorStop(0.6, "#59524a");
+  body.addColorStop(1, "#2c2723");
 
   const vertexCount = 8;
   ctx.beginPath();
@@ -257,19 +251,50 @@ function drawMeteor(
   ctx.restore();
 }
 
-function drawBalloon(ctx: CanvasRenderingContext2D, x: number, y: number, bob: number): void {
+// Escape Pods (the "balloon" entity kind — see game-logic.ts): friendly
+// craft to let through, not pop. A gold capsule with a glowing green
+// porthole and a small thruster flame trailing beneath it, in place of the
+// old balloon's string, so it reads as powered flight rather than drift.
+function drawEscapePod(ctx: CanvasRenderingContext2D, x: number, y: number, bob: number): void {
   ctx.save();
   ctx.translate(x, y + bob);
-  ctx.fillStyle = "#e67e22";
+
+  const podW = BALLOON_RADIUS * 0.8;
+  const podH = BALLOON_RADIUS;
+
+  const flame = ctx.createLinearGradient(0, podH * 0.85, 0, podH * 1.6);
+  flame.addColorStop(0, "rgba(255, 225, 150, 0.75)");
+  flame.addColorStop(1, "rgba(255, 225, 150, 0)");
   ctx.beginPath();
-  ctx.ellipse(0, 0, BALLOON_RADIUS * 0.8, BALLOON_RADIUS, 0, 0, Math.PI * 2);
+  ctx.moveTo(-podW * 0.3, podH * 0.85);
+  ctx.quadraticCurveTo(0, podH * 1.6, podW * 0.3, podH * 0.85);
+  ctx.closePath();
+  ctx.fillStyle = flame;
   ctx.fill();
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-  ctx.lineWidth = 1;
+
+  const body = ctx.createLinearGradient(-podW, -podH, podW, podH);
+  body.addColorStop(0, "#fff3c4");
+  body.addColorStop(0.5, "#ffcc33");
+  body.addColorStop(1, "#b8860b");
   ctx.beginPath();
-  ctx.moveTo(0, BALLOON_RADIUS);
-  ctx.lineTo(0, BALLOON_RADIUS + 10);
+  ctx.ellipse(0, 0, podW, podH, 0, 0, Math.PI * 2);
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.lineWidth = 1;
   ctx.stroke();
+
+  const window = ctx.createRadialGradient(0, -podH * 0.15, 1, 0, -podH * 0.15, podW * 0.42);
+  window.addColorStop(0, "#eafff0");
+  window.addColorStop(1, "#3ddc5a");
+  ctx.beginPath();
+  ctx.arc(0, -podH * 0.15, podW * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle = window;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
   ctx.restore();
 }
 
@@ -333,7 +358,7 @@ function draw(
   ctx.save();
   ctx.translate(shakeX, shakeY);
 
-  drawStar(ctx, width, height, state.hits, animClock);
+  drawPlanet(ctx, width, height, state.hits, animClock);
 
   const pulse = 0.5 + 0.5 * Math.sin(animClock * 6);
   // Before the first tap, the only entity on screen is the intro spike —
@@ -345,7 +370,7 @@ function draw(
       drawMeteor(ctx, x, y, entity.angle, pulse, introIntensity);
     } else {
       const bob = Math.sin(animClock * 2 + entity.id) * 4;
-      drawBalloon(ctx, x, y, bob);
+      drawEscapePod(ctx, x, y, bob);
     }
   }
 
@@ -356,11 +381,11 @@ function pickAngle(): number {
   return Math.random() * Math.PI * 2;
 }
 
-// The "pop" — a decorative particle burst whenever a spike or balloon is
+// The "pop" — a decorative particle burst whenever a meteor or escape pod is
 // clicked. Purely visual, so it lives here rather than in game-logic's
-// testable state machine. Color signals the kind: a big neon
-// orange/electric-blue explosion for a destroyed spike (the successful,
-// intended tap), muted grey for a popped balloon (the wrong move).
+// testable state machine. Color signals the kind: a big fiery orange/red
+// blast — pulverized rock — for a destroyed meteor (the successful,
+// intended tap), gold for a popped escape pod (the wrong move).
 interface Particle {
   x: number;
   y: number;
@@ -372,7 +397,7 @@ interface Particle {
   radius: number;
 }
 
-// A one-off expanding, fading ring — the "shockwave" that sells a spike
+// A one-off expanding, fading ring — the "shockwave" that sells a meteor
 // destruction as a bigger, higher-energy event than a normal particle pop.
 interface Shockwave {
   x: number;
@@ -383,8 +408,8 @@ interface Shockwave {
   color: string;
 }
 
-const SPIKE_POP_COLORS = ["255, 122, 0", "0, 200, 255"];
-const BALLOON_POP_COLOR = "160, 160, 190";
+const SPIKE_POP_COLORS = ["255, 210, 60", "255, 122, 0", "220, 40, 20"];
+const BALLOON_POP_COLOR = "255, 205, 80";
 
 // A short, decaying screen shake — triggered once when the round ends,
 // win or lose.
@@ -461,7 +486,7 @@ export function start(canvas: HTMLCanvasElement): void {
 
   // Bigger, faster, longer-lived, and with size variety — a "massive,
   // high-energy" burst rather than a small pop, for the tap the game
-  // actually wants: destroying a spike.
+  // actually wants: destroying a meteor.
   const SPIKE_POP: PopOptions = {
     count: 48,
     speedMin: 90,
@@ -469,6 +494,17 @@ export function start(canvas: HTMLCanvasElement): void {
     life: 0.8,
     radiusMin: 2,
     radiusMax: 6,
+  };
+
+  // Bigger again, and longer-lived — the planet itself going up, on the
+  // third hit that ends the round, rather than just another meteor popping.
+  const PLANET_POP: PopOptions = {
+    count: 90,
+    speedMin: 120,
+    speedMax: 420,
+    life: 1.1,
+    radiusMin: 3,
+    radiusMax: 8,
   };
 
   function popParticles(x: number, y: number, colors: string[], opts: PopOptions): void {
@@ -566,7 +602,7 @@ export function start(canvas: HTMLCanvasElement): void {
 
     if (!state.started) {
       // Frozen opening screen: only a tap that actually lands on the intro
-      // spike does anything — it pops, and that's what starts the round.
+      // meteor does anything — it pops, and that's what starts the round.
       state = startGame(resolveClick(state, target.id));
       return;
     }
@@ -601,10 +637,18 @@ export function start(canvas: HTMLCanvasElement): void {
     }
 
     // A one-shot shake and stinger the instant the round ends — win or lose.
+    // A loss additionally blows up the planet itself: a bigger particle
+    // burst and shockwave than any single meteor pop, with a deeper,
+    // longer explosion sound distinct from playMeteorExplosion.
     if (state.gameOver && !wasGameOver) {
       shakeTimeRemaining = SHAKE_DURATION;
-      if (state.won) playWin();
-      else playGameOver();
+      if (state.won) {
+        playWin();
+      } else {
+        popParticles(width / 2, height / 2, SPIKE_POP_COLORS, PLANET_POP);
+        spawnShockwave(width / 2, height / 2, SPIKE_POP_COLORS[1]);
+        playPlanetDestroyed();
+      }
     }
     wasGameOver = state.gameOver;
 

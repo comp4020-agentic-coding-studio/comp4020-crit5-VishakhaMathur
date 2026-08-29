@@ -49,11 +49,20 @@ function playArpeggio(freqs: number[], noteDuration: number, gap: number): void 
   });
 }
 
-/** A short burst of white noise through a decaying lowpass filter — the
- *  "boom" component beneath playMeteorExplosion's low-frequency thump. */
-function playNoiseBurst(duration: number, peakGain: number): void {
+interface NoiseBurstOptions {
+  duration: number;
+  peakGain: number;
+  filterStart?: number;
+  filterEnd?: number;
+}
+
+/** A burst of white noise through a decaying lowpass filter — the "boom"
+ *  component beneath both explosion sounds below. filterStart/End control
+ *  how bright vs. muffled/deep the boom reads. */
+function playNoiseBurst(opts: NoiseBurstOptions, when = 0): void {
   const audio = getContext();
-  const startTime = audio.currentTime;
+  const startTime = audio.currentTime + when;
+  const { duration, peakGain, filterStart = 3200, filterEnd = 120 } = opts;
   const sampleCount = Math.ceil(audio.sampleRate * duration);
   const buffer = audio.createBuffer(1, sampleCount, audio.sampleRate);
   const data = buffer.getChannelData(0);
@@ -66,8 +75,8 @@ function playNoiseBurst(duration: number, peakGain: number): void {
 
   const filter = audio.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(3200, startTime);
-  filter.frequency.exponentialRampToValueAtTime(120, startTime + duration);
+  filter.frequency.setValueAtTime(filterStart, startTime);
+  filter.frequency.exponentialRampToValueAtTime(filterEnd, startTime + duration);
 
   const gain = audio.createGain();
   gain.gain.setValueAtTime(peakGain, startTime);
@@ -80,12 +89,23 @@ function playNoiseBurst(duration: number, peakGain: number): void {
   source.stop(startTime + duration + 0.02);
 }
 
-/** The correct move: a meteor destroyed before it reaches the star — a
+/** The correct move: a meteor destroyed before it reaches the planet — a
  *  noise-burst boom layered under a low sine thump for real explosive punch,
  *  rather than a simple tonal blip. */
 export function playMeteorExplosion(): void {
-  playNoiseBurst(0.35, 0.3);
+  playNoiseBurst({ duration: 0.35, peakGain: 0.3 });
   playTone({ type: "sine", freqStart: 150, freqEnd: 35, duration: 0.3, peakGain: 0.28 });
+}
+
+/** The wrong move, at planet scale: a meteor gets through and the shield
+ *  fails on the third hit. Bigger and deeper than playMeteorExplosion —
+ *  a sharp crack transient, a long muffled rumble tail, and a much lower,
+ *  longer sine thump — so it reads as the planet itself taking damage,
+ *  not just another meteor popping. */
+export function playPlanetDestroyed(): void {
+  playNoiseBurst({ duration: 0.12, peakGain: 0.35, filterStart: 6000, filterEnd: 1500 });
+  playNoiseBurst({ duration: 0.9, peakGain: 0.4, filterStart: 1400, filterEnd: 50 });
+  playTone({ type: "sine", freqStart: 85, freqEnd: 22, duration: 0.7, peakGain: 0.4 });
 }
 
 /** The wrong move: a balloon popped instead of let through. */
