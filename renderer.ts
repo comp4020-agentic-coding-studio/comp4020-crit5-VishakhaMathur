@@ -18,7 +18,17 @@ import {
   startGame,
   tick,
 } from "./game-logic";
-import { playBalloonMiss, playHitTaken, playMeteorExplosion, playPlanetDestroyed, playWin } from "./sound";
+import {
+  isMusicMuted,
+  playBalloonMiss,
+  playHitTaken,
+  playMeteorExplosion,
+  playPlanetDestroyed,
+  playWin,
+  setMusicMuted,
+  startMusic,
+  stopMusic,
+} from "./sound";
 
 // A purely visual radius, deliberately decoupled from GLASS_STAR_RADIUS (the
 // tested collision constant in game-logic.ts) — scaling it here only makes
@@ -433,6 +443,15 @@ export function start(canvas: HTMLCanvasElement): void {
   const gameOverEl = document.querySelector<HTMLElement>("#game-over");
   const gameOverTitle = document.querySelector<HTMLElement>("#game-over-title");
   const gameOverScore = document.querySelector<HTMLElement>("#game-over-score");
+  const muteToggle = document.querySelector<HTMLButtonElement>("#mute-toggle");
+
+  muteToggle?.addEventListener("click", () => {
+    const muted = !isMusicMuted();
+    setMusicMuted(muted);
+    muteToggle.textContent = muted ? "🔇" : "🔊";
+    muteToggle.setAttribute("aria-pressed", String(muted));
+    muteToggle.setAttribute("aria-label", muted ? "Unmute background music" : "Mute background music");
+  });
 
   function syncHud(state: GameState): void {
     if (hudScore) hudScore.textContent = `${state.score}`;
@@ -619,6 +638,7 @@ export function start(canvas: HTMLCanvasElement): void {
       // Frozen opening screen: only a tap that actually lands on the intro
       // meteor does anything — it pops, and that's what starts the round.
       state = startGame(resolveClick(state, target.id));
+      startMusic();
       return;
     }
     state = resolveClick(state, target.id);
@@ -658,6 +678,7 @@ export function start(canvas: HTMLCanvasElement): void {
     // the planet itself with a fiery burst and a deeper explosion sound.
     if (state.gameOver && !wasGameOver) {
       shakeTimeRemaining = SHAKE_DURATION;
+      stopMusic();
       if (state.won) {
         popParticles(width / 2, height / 2, VICTORY_COLORS, VICTORY_POP);
         spawnShockwave(width / 2, height / 2, VICTORY_COLORS[0]);

@@ -126,3 +126,113 @@ export function playHitTaken(): void {
 export function playWin(): void {
   playArpeggio([392, 493.88, 587.33, 783.99], 0.18, 0.11);
 }
+
+// --- Background music -------------------------------------------------
+// A driving minor ostinato — a pulsing sawtooth bass on every beat under a
+// faster triangle arpeggio — synthesized the same way as the SFX above
+// (plain oscillators, no audio files). A slow ambient pad was tried first
+// and played fine on its own, but under actual meteors-incoming, spikes
+// ramping up, and a 3-minute survival clock it read as the wrong mood
+// entirely — this replaces it with something that matches the tension
+// instead of undercutting it. Runs through its own gain node so the mute
+// toggle can silence it independently of one-shot SFX.
+const MUSIC_VOLUME = 0.06;
+const BEAT_SECONDS = 60 / 138; // brisk, not frantic
+const BAR_SECONDS = BEAT_SECONDS * 4;
+// One low root per bar, cycling — a tense minor descent under the pulse.
+const BAR_ROOTS = [65.41, 58.27, 51.91, 49.0]; // C2, Bb1, Ab1, G1
+
+/** The arpeggio riding two octaves above a bar's root: root, minor third,
+ *  fifth, octave. */
+function arpeggioFor(root: number): number[] {
+  const up = root * 4;
+  return [up, up * 1.189, up * 1.5, up * 2];
+}
+
+let musicGain: GainNode | null = null;
+let musicTimer: ReturnType<typeof setTimeout> | null = null;
+let musicMuted = false;
+let barIndex = 0;
+
+function ensureMusicGain(): GainNode {
+  const audio = getContext();
+  if (!musicGain) {
+    musicGain = audio.createGain();
+    musicGain.gain.value = musicMuted ? 0 : MUSIC_VOLUME;
+    musicGain.connect(audio.destination);
+  }
+  return musicGain;
+}
+
+function playMusicNote(
+  freq: number,
+  type: OscillatorType,
+  peakGain: number,
+  duration: number,
+  when: number,
+): void {
+  const audio = getContext();
+  const gain = ensureMusicGain();
+  const startTime = audio.currentTime + when;
+  const osc = audio.createOscillator();
+  const voiceGain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  voiceGain.gain.setValueAtTime(0, startTime);
+  voiceGain.gain.linearRampToValueAtTime(peakGain, startTime + 0.01);
+  voiceGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(voiceGain);
+  voiceGain.connect(gain);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.02);
+}
+
+function playBar(index: number): void {
+  const root = BAR_ROOTS[index % BAR_ROOTS.length];
+  // A sawtooth stab on every beat — the "pulse" that reads as tension/danger.
+  for (let beat = 0; beat < 4; beat++) {
+    playMusicNote(root, "sawtooth", 0.5, 0.16, beat * BEAT_SECONDS);
+  }
+  // A faster triangle arpeggio on top, twice per beat, syncopated against it.
+  const arp = arpeggioFor(root);
+  const step = BEAT_SECONDS / 2;
+  for (let i = 0; i < 8; i++) {
+    playMusicNote(arp[i % arp.length], "triangle", 0.22, step * 0.85, i * step);
+  }
+}
+
+/** Starts the looping ostinato; a no-op if it's already running. Safe to
+ *  call from the same gesture that unlocks the AudioContext. */
+export function startMusic(): void {
+  if (musicTimer !== null) return;
+  ensureMusicGain();
+  const scheduleNext = (): void => {
+    playBar(barIndex);
+    barIndex += 1;
+    musicTimer = setTimeout(scheduleNext, BAR_SECONDS * 1000);
+  };
+  scheduleNext();
+}
+
+/** Stops the loop outright (used when a round resets) so a fresh round
+ *  restarts from the first bar. */
+export function stopMusic(): void {
+  if (musicTimer !== null) {
+    clearTimeout(musicTimer);
+    musicTimer = null;
+  }
+  barIndex = 0;
+}
+
+/** The mute toggle: silences/restores the music gain without touching the
+ *  running loop, so toggling mid-chord doesn't glitch or restart it. */
+export function setMusicMuted(muted: boolean): void {
+  musicMuted = muted;
+  if (musicGain) {
+    musicGain.gain.setTargetAtTime(muted ? 0 : MUSIC_VOLUME, getContext().currentTime, 0.05);
+  }
+}
+
+export function isMusicMuted(): boolean {
+  return musicMuted;
+}

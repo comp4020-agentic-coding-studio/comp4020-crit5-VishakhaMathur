@@ -93,6 +93,36 @@ canvas#game {
   background: rgba(255, 255, 255, 0.18);
 }
 
+/* Glassmorphic mute toggle, matching the HUD's glass panel. Unlike the HUD
+   it's a real button (not aria-hidden) since it's interactive, not a status
+   readout. */
+.mute-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.mute-toggle:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
 /* Game-over glass panel: dims and blurs the play area behind it. */
 .game-over {
   position: absolute;
