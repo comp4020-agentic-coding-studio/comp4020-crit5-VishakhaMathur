@@ -11,6 +11,7 @@ import {
   checkCollision,
   createInitialState,
   createIntroState,
+  difficultyFor,
   entityPosition,
   findEntityAt,
   isHit,
@@ -161,6 +162,24 @@ describe("game: it can be won", () => {
     state = tick(state, WIN_SECONDS); // every spike arrives AND the clock runs out
     expect(state.gameOver).toBe(true);
     expect(state.won).toBe(false);
+  });
+});
+
+describe("game: difficulty escalates enough to stay demanding", () => {
+  // Playing a full round surfaced that the old ramp went flat well before
+  // the 3-minute mark: spikes never arrived faster than ~1.8s apart and
+  // spawns never came quicker than every 450ms, so the back two-thirds of a
+  // round felt identical to the middle. These bounds pin the tightened caps
+  // so a future "simplify the numbers" pass can't quietly flatten it again.
+  it("starts gentle enough to be obvious inside ten seconds", () => {
+    const early = difficultyFor(0);
+    expect(1 / early.spikeSpeed).toBeGreaterThan(5); // seconds to arrive
+  });
+
+  it("ramps to a demanding cap well before the round ends", () => {
+    const late = difficultyFor(90);
+    expect(late.spawnIntervalMs).toBeLessThan(300);
+    expect(1 / late.spikeSpeed).toBeLessThan(1.3); // seconds to arrive
   });
 });
 

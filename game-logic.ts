@@ -158,11 +158,16 @@ export interface Difficulty {
 /** Spawn cadence and entity speed ramp with elapsed time, each clamped so the
  *  game neither idles forever nor becomes unplayable. The first spike starts
  *  slow — roughly six seconds to arrive — so its approach is obvious well
- *  inside the "ten seconds" affordance window, before the ramp tightens. */
+ *  inside the "ten seconds" affordance window, before the ramp tightens.
+ *  The caps below (reached ~45-60s in) are deliberately steep: an earlier
+ *  pass capped out gently — spikes never arrived faster than ~1.8s apart at
+ *  ~450ms spawns — and a full 3-minute round spent its back two-thirds flat
+ *  and undemanding. Found by actually playing a full round, not by reading
+ *  the numbers off the page. */
 export function difficultyFor(elapsedSeconds: number): Difficulty {
-  const spawnIntervalMs = Math.max(450, 1400 - elapsedSeconds * 20);
-  const spikeSpeed = Math.min(0.55, 0.16 + elapsedSeconds * 0.007);
-  const balloonSpeed = Math.min(0.35, 0.16 + elapsedSeconds * 0.003);
+  const spawnIntervalMs = Math.max(280, 1400 - elapsedSeconds * 28);
+  const spikeSpeed = Math.min(0.85, 0.16 + elapsedSeconds * 0.012);
+  const balloonSpeed = Math.min(0.5, 0.16 + elapsedSeconds * 0.005);
   return {
     spawnIntervalMs,
     spikeSpeed,
