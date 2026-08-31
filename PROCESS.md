@@ -50,4 +50,16 @@ tutorial and the trigger that starts the round.
    [`078970f`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/078970f),
    [`0a5b0cf`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/0a5b0cf)
 
-`pnpm check` is green (35 tests, typecheck, build) as of this submission.
+4. **The difficulty ramp only revealed itself as flat by actually playing a
+   full round, not by reading `game-logic.ts`.** Every number in
+   `difficultyFor` looked reasonable in isolation, and every test was green,
+   but playing a complete 3-minute round showed the back two-thirds felt
+   identical to the middle: spikes never arrived faster than ~1.8s apart, and
+   spawns never came quicker than every 450ms, so the game read as too easy
+   well before it ended. I steepened both caps and reached them sooner, and
+   pinned the new curve with two tests (still gentle at the very start, then
+   demanding by 90s in) so a later "clean up the numbers" pass can't quietly
+   flatten it again.
+   [`531dbaf`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-VishakhaMathur/commit/531dbaf)
+
+`pnpm check` is green (37 tests, typecheck, build) as of this submission.
